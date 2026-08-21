@@ -935,6 +935,40 @@ footer a:hover{color:var(--espresso);}
 }
 @media(max-width:700px) { .media-grid { grid-template-columns: 1fr; } }
 
+
+/* ── NETLIFY ANMELDELSER ── */
+.netlify-reviews-wrap { margin-top: 32px; }
+.netlify-review-card {
+  background: var(--cream2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 16px 18px;
+  position: relative;
+  transition: border-color 0.2s;
+}
+.netlify-review-card:hover { border-color: var(--copper); }
+.netlify-review-stars { color: #C8922A; font-size: 0.82rem; letter-spacing: 2px; margin-bottom: 8px; }
+.netlify-review-body { font-size: 0.85rem; color: var(--text); line-height: 1.65; margin-bottom: 14px; }
+.netlify-review-meta { display: flex; align-items: center; gap: 10px; }
+.netlify-review-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: rgba(184,115,51,0.15);
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'DM Serif Display', serif;
+  font-size: 0.95rem; color: var(--copper); flex-shrink: 0;
+  overflow: hidden;
+}
+.netlify-review-avatar img { width:100%; height:100%; object-fit:cover; border-radius:50%; }
+.netlify-review-name { font-weight: 600; font-size: 0.86rem; color: var(--espresso); }
+.netlify-review-role { font-size: 0.75rem; color: var(--muted); }
+.netlify-reviews-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+.netlify-loading { text-align: center; color: var(--muted); font-size: 0.88rem; padding: 20px; }
+
 </style>
 </head>
 <body>
@@ -1079,11 +1113,18 @@ footer a:hover{color:var(--espresso);}
   <div class="wrap center">
     <span class="eyebrow reveal">Anmeldelser</span>
     <h2 class="reveal">Det siger vores medlemmer</h2>
-    <div style="text-align:center;margin-bottom:28px;" class="reveal">
-      <p class="no-reviews-msg" id="noReviewsMsg">Vi indsamler anmeldelser fra vores første medlemmer.<br>Har du været med fra starten?</p>
+  </div>
+  <div class="wrap">
+    <div id="netlifyReviewsWrap" class="netlify-reviews-wrap">
+      <div class="netlify-loading" id="reviewsLoading">Henter anmeldelser...</div>
+      <div class="netlify-reviews-grid" id="netlifyReviewsGrid" style="display:none;"></div>
+    </div>
+    <div style="text-align:center;margin-top:28px;">
+      <p class="no-reviews-msg" id="noReviewsMsg" style="display:none;color:var(--muted);font-size:0.92rem;">Vi indsamler anmeldelser fra vores første medlemmer.<br>Har du været med fra starten?</p>
       <button class="review-cta-link" style="margin-top:12px;display:block;margin-left:auto;margin-right:auto;" onclick="openReviewModal()">Del din oplevelse her →</button>
     </div>
-    <div class="reviews-list" id="reviewsList"></div>
+    <!-- Lokale anmeldelser (backup) -->
+    <div class="reviews-list" id="reviewsList" style="margin-top:16px;"></div>
   </div>
 </section>
 
@@ -1516,6 +1557,65 @@ function openCourseModal(course) {
 function closeCourseModal() {
   document.getElementById('courseModalOverlay').classList.remove('open');
 }
+
+
+// ── HENT ANMELDELSER FRA NETLIFY ──
+var NETLIFY_SITE_ID = '2488e89d-fed4-4554-8c98-a06d96563d2d';
+var NETLIFY_TOKEN   = 'nfp_6HzBTuiQ4Gwh5QRMtoknKYR54x46TTM69515';
+var NETLIFY_FORM_ID = null;
+
+function fetchNetlifyReviews() {
+  // Først find form ID
+  fetch('https://api.netlify.com/api/v1/sites/' + NETLIFY_SITE_ID + '/forms', {
+    headers: { 'Authorization': 'Bearer ' + NETLIFY_TOKEN }
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(forms) {
+    var form = forms.find(function(f) { return f.name === 'mbcc-anmeldelse'; });
+    if (!form) { showNoReviews(); return; }
+    NETLIFY_FORM_ID = form.id;
+    return fetch('https://api.netlify.com/api/v1/forms/' + form.id + '/submissions', {
+      headers: { 'Authorization': 'Bearer ' + NETLIFY_TOKEN }
+    });
+  })
+  .then(function(r) { return r && r.json(); })
+  .then(function(submissions) {
+    document.getElementById('reviewsLoading').style.display = 'none';
+    if (!submissions || submissions.length === 0) {
+      showNoReviews(); return;
+    }
+    var grid = document.getElementById('netlifyReviewsGrid');
+    grid.style.display = 'grid';
+    grid.innerHTML = submissions.map(function(s) {
+      var d = s.data || {};
+      var stars = parseInt(d.stjerner) || 5;
+      var starStr = '★'.repeat(stars) + '☆'.repeat(5 - stars);
+      var initial = (d.navn || '?').charAt(0).toUpperCase();
+      return '<div class="netlify-review-card">' +
+        '<div class="netlify-review-stars">' + starStr + '</div>' +
+        '<div class="netlify-review-body">' + escHtml(d.anmeldelse || '') + '</div>' +
+        '<div class="netlify-review-meta">' +
+          '<div class="netlify-review-avatar">' + initial + '</div>' +
+          '<div>' +
+            '<div class="netlify-review-name">' + escHtml(d.navn || '') + '</div>' +
+            '<div class="netlify-review-role">' + escHtml(d.rolle || '') + '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  })
+  .catch(function(err) {
+    console.log('Netlify API ikke tilgængelig:', err);
+    document.getElementById('reviewsLoading').style.display = 'none';
+    showNoReviews();
+  });
+}
+
+function showNoReviews() {
+  document.getElementById('noReviewsMsg').style.display = 'block';
+}
+
+fetchNetlifyReviews();
 
 </script>
 
