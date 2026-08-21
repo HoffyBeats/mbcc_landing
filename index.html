@@ -943,7 +943,7 @@ footer a:hover{color:var(--espresso);}
 <body>
 
 <!-- NETLIFY FORM DETECTION (skjult) -->
-<form name="mbcc-anmeldelse" data-netlify="true" netlify-honeypot="bot-field" hidden>
+<form name="mbcc-anmeldelse" data-netlify="true" netlify-honeypot="bot-field" style="display:none;">
   <input type="hidden" name="form-name" value="mbcc-anmeldelse">
   <input name="bot-field">
   <input name="navn">
@@ -1375,26 +1375,26 @@ function submitReview() {
   reviews.unshift(review);
   localStorage.setItem('mbcc_reviews', JSON.stringify(reviews));
 
-  // Send til Netlify Forms via multipart/form-data
-  var netlifyData = new FormData();
-  netlifyData.append('form-name', 'mbcc-anmeldelse');
-  netlifyData.append('navn', name);
-  netlifyData.append('rolle', role || 'Musikker');
-  netlifyData.append('stjerner', currentStars.toString());
-  netlifyData.append('anmeldelse', body);
-  if (currentImageData) { netlifyData.append('billede', currentImageData.substring(0, 1000)); }
+  // Send til Netlify Forms via URL-encoded form
+  var params = new URLSearchParams();
+  params.append('form-name', 'mbcc-anmeldelse');
+  params.append('navn', name);
+  params.append('rolle', role || 'Musikker');
+  params.append('stjerner', currentStars.toString());
+  params.append('anmeldelse', body);
 
   fetch('/', {
     method: 'POST',
-    body: netlifyData
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString()
   }).then(function(res) {
     if (res.ok) {
-      console.log('Anmeldelse sendt til Netlify Forms.');
+      console.log('✓ Anmeldelse sendt til Netlify Forms');
     } else {
-      console.log('Netlify svarede med status:', res.status);
+      console.warn('Netlify Forms fejl – status:', res.status);
     }
   }).catch(function(err) {
-    console.log('Netlify Forms ikke tilgængelig lokalt – anmeldelse kun gemt lokalt.');
+    console.log('Lokalt miljø – anmeldelse gemt i localStorage.');
   });
 
   document.getElementById('reviewFormWrap').style.display = 'none';
