@@ -968,22 +968,22 @@ footer a:hover{color:var(--espresso);}
   gap: 16px;
 }
 .netlify-loading { text-align: center; color: var(--muted); font-size: 0.88rem; padding: 20px; }
+.review-error { display:none; margin:12px 0 0; color:#9a3f32; font-size:0.84rem; line-height:1.5; }
+.review-submit:disabled { opacity:0.6; cursor:wait; transform:none; }
+.review-honeypot { position:absolute; left:-10000px; width:1px; height:1px; overflow:hidden; }
+.review-admin-tools { margin-top:18px; display:flex; justify-content:center; align-items:center; gap:12px; min-height:28px; }
+.review-admin-link { border:0; background:transparent; color:var(--muted); font:500 0.76rem 'Inter',sans-serif; cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
+.review-admin-link:hover { color:var(--espresso); }
+.review-admin-status { display:none; align-items:center; gap:10px; color:var(--copper); font-size:0.78rem; font-weight:600; }
+.review-delete { position:absolute; top:10px; right:10px; z-index:2; border:1px solid rgba(154,63,50,0.28); border-radius:999px; background:rgba(255,248,238,0.94); color:#9a3f32; padding:6px 10px; font:600 0.7rem 'Inter',sans-serif; cursor:pointer; }
+.review-delete:hover { background:#9a3f32; color:#fff8ee; }
+.review-admin-note { font-size:0.78rem; color:var(--muted); margin-top:12px; line-height:1.55; }
+.admin-panel[hidden] { display:none; }
+.admin-secondary-action { display:block; margin:14px auto 0; border:0; background:transparent; color:var(--copper); font:600 0.8rem 'Inter',sans-serif; cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
 
 </style>
 </head>
 <body>
-
-<!-- NETLIFY FORM DETECTION (skjult) -->
-<form name="mbcc-anmeldelse" data-netlify="true" netlify-honeypot="bot-field" style="display:none;">
-  <input type="hidden" name="form-name" value="mbcc-anmeldelse">
-  <input name="bot-field">
-  <input name="navn">
-  <input name="rolle">
-  <input name="stjerner">
-  <textarea name="anmeldelse"></textarea>
-  <input name="billede">
-</form>
-
 
 <div id="topbar">
   <div class="topbar-inner">
@@ -1122,9 +1122,14 @@ footer a:hover{color:var(--espresso);}
     <div style="text-align:center;margin-top:28px;">
       <p class="no-reviews-msg" id="noReviewsMsg" style="display:none;color:var(--muted);font-size:0.92rem;">Vi indsamler anmeldelser fra vores første medlemmer.<br>Har du været med fra starten?</p>
       <button class="review-cta-link" style="margin-top:12px;display:block;margin-left:auto;margin-right:auto;" onclick="openReviewModal()">Del din oplevelse her →</button>
+      <div class="review-admin-tools">
+        <button class="review-admin-link" id="adminLoginLink" type="button" onclick="openAdminModal()">Administrator</button>
+        <div class="review-admin-status" id="adminStatus">
+          <span>Administratortilstand</span>
+          <button class="review-admin-link" type="button" onclick="logoutAdmin()">Log ud</button>
+        </div>
+      </div>
     </div>
-    <!-- Lokale anmeldelser (backup) -->
-    <div class="reviews-list" id="reviewsList" style="margin-top:16px;"></div>
   </div>
 </section>
 
@@ -1342,6 +1347,10 @@ revEls.forEach(function(el){ro.observe(el);});
 
 // ── REVIEW SYSTEM ──
 var currentStars = 5;
+var currentReviewImage = null;
+var currentReviewImageUrl = null;
+var currentReviews = [];
+var isReviewAdmin = false;
 
 function setStar(n) {
   currentStars = n;
@@ -1352,36 +1361,53 @@ function setStar(n) {
 }
 setStar(5);
 
-var currentImageData = null;
-
 function handleImageUpload(event) {
   var file = event.target.files[0];
+  var error = document.getElementById('reviewError');
   if (!file) return;
-  if (file.size > 5 * 1024 * 1024) { alert('Billedet må max være 5MB.'); return; }
-  var reader = new FileReader();
-  reader.onload = function(e) {
-    currentImageData = e.target.result;
-    document.getElementById('uploadPreviewImg').src = currentImageData;
-    document.getElementById('uploadPreview').style.display = 'block';
-  };
-  reader.readAsDataURL(file);
+
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+    error.textContent = 'Billedet skal være JPG, PNG eller WEBP.';
+    error.style.display = 'block';
+    event.target.value = '';
+    return;
+  }
+
+  if (file.size > 3 * 1024 * 1024) {
+    error.textContent = 'Billedet må højst fylde 3 MB.';
+    error.style.display = 'block';
+    event.target.value = '';
+    return;
+  }
+
+  removeReviewImage();
+  currentReviewImage = file;
+  currentReviewImageUrl = URL.createObjectURL(file);
+  document.getElementById('uploadPreviewImg').src = currentReviewImageUrl;
+  document.getElementById('uploadPreview').style.display = 'block';
+  error.style.display = 'none';
 }
 
-function removeImage() {
-  currentImageData = null;
-  document.getElementById('uploadPreviewImg').src = '';
-  document.getElementById('uploadPreview').style.display = 'none';
-  document.getElementById('reviewImageInput').value = '';
+function removeReviewImage() {
+  if (currentReviewImageUrl) URL.revokeObjectURL(currentReviewImageUrl);
+  currentReviewImage = null;
+  currentReviewImageUrl = null;
+  var input = document.getElementById('reviewImageInput');
+  var preview = document.getElementById('uploadPreview');
+  if (input) input.value = '';
+  if (preview) preview.style.display = 'none';
 }
 
 function openReviewModal() {
   document.getElementById('reviewModalOverlay').classList.add('open');
   document.getElementById('reviewFormWrap').style.display = 'block';
   document.getElementById('reviewSuccess').style.display = 'none';
+  document.getElementById('reviewError').style.display = 'none';
   document.getElementById('reviewName').value = '';
   document.getElementById('reviewRole').value = '';
   document.getElementById('reviewBody').value = '';
-  removeImage();
+  document.getElementById('reviewWebsite').value = '';
+  removeReviewImage();
   setStar(5);
 }
 
@@ -1393,105 +1419,318 @@ function closeReviewModalOnBg(e) {
   if (e.target === document.getElementById('reviewModalOverlay')) closeReviewModal();
 }
 
-function submitReview() {
+async function submitReview() {
   var name = document.getElementById('reviewName').value.trim();
   var role = document.getElementById('reviewRole').value.trim();
   var body = document.getElementById('reviewBody').value.trim();
-  if (!name || !body) { alert('Udfyld venligst dit navn og din anmeldelse.'); return; }
+  var error = document.getElementById('reviewError');
+  var submitButton = document.getElementById('reviewSubmit');
+  error.style.display = 'none';
 
-  var review = {
-    name: name,
-    role: role || 'Musikker',
-    body: body,
-    stars: currentStars,
-    image: currentImageData || null,
-    date: new Date().toLocaleDateString('da-DK', {year:'numeric',month:'long',day:'numeric'})
-  };
-
-  // Gem lokalt med det samme
-  var reviews = getReviews();
-  reviews.unshift(review);
-  localStorage.setItem('mbcc_reviews', JSON.stringify(reviews));
-
-  // Send til Netlify Forms via URL-encoded form
-  var params = new URLSearchParams();
-  params.append('form-name', 'mbcc-anmeldelse');
-  params.append('navn', name);
-  params.append('rolle', role || 'Musikker');
-  params.append('stjerner', currentStars.toString());
-  params.append('anmeldelse', body);
-
-  fetch('/', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: params.toString()
-  }).then(function(res) {
-    if (res.ok) {
-      console.log('✓ Anmeldelse sendt til Netlify Forms');
-    } else {
-      console.warn('Netlify Forms fejl – status:', res.status);
-    }
-  }).catch(function(err) {
-    console.log('Lokalt miljø – anmeldelse gemt i localStorage.');
-  });
-
-  document.getElementById('reviewFormWrap').style.display = 'none';
-  document.getElementById('reviewSuccess').style.display = 'block';
-
-  setTimeout(function() {
-    closeReviewModal();
-    renderReviews();
-  }, 2000);
-}
-
-function getReviews() {
-  try { return JSON.parse(localStorage.getItem('mbcc_reviews')) || []; }
-  catch(e) { return []; }
-}
-
-function renderReviews() {
-  var reviews = getReviews();
-  var list = document.getElementById('reviewsList');
-  var noMsg = document.getElementById('noReviewsMsg');
-  if (!list) return;
-
-  if (reviews.length === 0) {
-    list.innerHTML = '';
-    if (noMsg) noMsg.style.display = 'block';
+  if (name.length < 2 || body.length < 10) {
+    error.textContent = 'Skriv dit navn og mindst 10 tegn i anmeldelsen.';
+    error.style.display = 'block';
     return;
   }
 
-  if (noMsg) noMsg.style.display = 'none';
+  submitButton.disabled = true;
+  submitButton.textContent = 'Indsender...';
 
-  list.innerHTML = reviews.map(function(r) {
-    var stars = '★'.repeat(r.stars) + '☆'.repeat(5 - r.stars);
-    var initial = r.name.charAt(0).toUpperCase();
-    var avatarHtml = r.image
-      ? '<div class="review-card-avatar"><img src="' + r.image + '" alt="' + escHtml(r.name) + '"></div>'
-      : '<div class="review-card-avatar">' + initial + '</div>';
-    var imageHtml = r.image
-      ? '<img src="' + r.image + '" class="review-card-image" alt="Billede fra ' + escHtml(r.name) + '">'
-      : '';
-    return '<div class="review-card">' +
-      imageHtml +
-      '<div class="review-card-stars">' + stars + '</div>' +
-      '<div class="review-card-body">' + escHtml(r.body) + '</div>' +
-      '<div class="review-card-meta">' +
-        avatarHtml +
-        '<div>' +
-          '<div class="review-card-name">' + escHtml(r.name) + '</div>' +
-          '<div class="review-card-role">' + escHtml(r.role) + (r.date ? ' · ' + r.date : '') + '</div>' +
-        '</div>' +
-      '</div>' +
-    '</div>';
-  }).join('');
+  try {
+    var payload = new FormData();
+    payload.append('name', name);
+    payload.append('role', role);
+    payload.append('body', body);
+    payload.append('stars', currentStars.toString());
+    payload.append('website', document.getElementById('reviewWebsite').value);
+    if (currentReviewImage) payload.append('image', currentReviewImage);
+
+    var response = await fetch('/api/reviews', {
+      method: 'POST',
+      body: payload
+    });
+    var result = await response.json().catch(function() { return {}; });
+    if (!response.ok) throw new Error(result.error || 'Anmeldelsen kunne ikke gemmes.');
+
+    document.getElementById('reviewFormWrap').style.display = 'none';
+    document.getElementById('reviewSuccess').style.display = 'block';
+    await fetchPublicReviews();
+
+    setTimeout(function() {
+      closeReviewModal();
+    }, 1800);
+  } catch (reviewError) {
+    error.textContent = reviewError.message || 'Der opstod en fejl. Prøv igen.';
+    error.style.display = 'block';
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = 'Indsend anmeldelse →';
+  }
 }
 
 function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-renderReviews();
+function renderPublicReviews(reviews) {
+  currentReviews = reviews;
+  var loading = document.getElementById('reviewsLoading');
+  var grid = document.getElementById('netlifyReviewsGrid');
+  var noMsg = document.getElementById('noReviewsMsg');
+  loading.style.display = 'none';
+
+  if (!reviews.length) {
+    grid.style.display = 'none';
+    noMsg.style.display = 'block';
+    return;
+  }
+
+  noMsg.style.display = 'none';
+  grid.style.display = 'grid';
+  grid.innerHTML = reviews.map(function(review) {
+    var stars = Math.max(1, Math.min(5, Number(review.stars) || 5));
+    var starStr = '★'.repeat(stars) + '☆'.repeat(5 - stars);
+    var initial = escHtml(review.name).charAt(0).toUpperCase();
+    var date = review.createdAt
+      ? new Date(review.createdAt).toLocaleDateString('da-DK', { year:'numeric', month:'long', day:'numeric' })
+      : '';
+    var imageHtml = review.imageUrl
+      ? '<img class="review-card-image" src="' + escHtml(review.imageUrl) + '" alt="Billede til anmeldelsen fra ' + escHtml(review.name) + '" loading="lazy">'
+      : '';
+    var deleteHtml = isReviewAdmin
+      ? '<button class="review-delete" type="button" onclick="deleteReview(' + Number(review.id) + ')">Slet</button>'
+      : '';
+    return '<article class="netlify-review-card">' +
+      deleteHtml +
+      imageHtml +
+      '<div class="netlify-review-stars" aria-label="' + stars + ' ud af 5 stjerner">' + starStr + '</div>' +
+      '<div class="netlify-review-body">' + escHtml(review.body) + '</div>' +
+      '<div class="netlify-review-meta">' +
+        '<div class="netlify-review-avatar" aria-hidden="true">' + initial + '</div>' +
+        '<div>' +
+          '<div class="netlify-review-name">' + escHtml(review.name) + '</div>' +
+          '<div class="netlify-review-role">' + escHtml(review.role) + (date ? ' · ' + date : '') + '</div>' +
+        '</div>' +
+      '</div>' +
+    '</article>';
+  }).join('');
+}
+
+async function fetchPublicReviews() {
+  try {
+    var response = await fetch('/api/reviews', { headers: { 'Accept': 'application/json' } });
+    if (!response.ok) throw new Error('Anmeldelserne kunne ikke hentes.');
+    renderPublicReviews(await response.json());
+  } catch (error) {
+    document.getElementById('reviewsLoading').textContent = 'Anmeldelserne kunne ikke hentes lige nu.';
+  }
+}
+
+function setAdminState(authenticated) {
+  isReviewAdmin = authenticated;
+  document.getElementById('adminLoginLink').style.display = authenticated ? 'none' : 'inline-block';
+  document.getElementById('adminStatus').style.display = authenticated ? 'flex' : 'none';
+  if (currentReviews.length) renderPublicReviews(currentReviews);
+}
+
+async function checkAdminSession() {
+  try {
+    var response = await fetch('/api/admin/session', { headers: { 'Accept': 'application/json' } });
+    var result = await response.json();
+    setAdminState(Boolean(result.authenticated));
+  } catch (error) {
+    setAdminState(false);
+  }
+}
+
+function openAdminModal() {
+  document.getElementById('adminModalOverlay').classList.add('open');
+  document.getElementById('adminLoginError').style.display = 'none';
+  showAdminPanel('adminLoginPanel');
+  document.getElementById('adminEmail').focus();
+}
+
+function closeAdminModal() {
+  document.getElementById('adminModalOverlay').classList.remove('open');
+}
+
+var pendingAdminToken = '';
+var pendingAdminFlow = '';
+
+function showAdminPanel(panelId) {
+  document.querySelectorAll('#adminModalOverlay .admin-panel').forEach(function(panel) {
+    panel.hidden = panel.id !== panelId;
+  });
+}
+
+function showAdminMessage(title, message) {
+  document.getElementById('adminMessageTitle').textContent = title;
+  document.getElementById('adminMessageBody').textContent = message;
+  showAdminPanel('adminMessagePanel');
+}
+
+function openRecoveryRequest() {
+  showAdminPanel('adminRecoveryPanel');
+  document.getElementById('adminRecoveryError').style.display = 'none';
+  document.getElementById('adminRecoveryEmail').value = document.getElementById('adminEmail').value;
+  document.getElementById('adminRecoveryEmail').focus();
+}
+
+function openPasswordSetup(flow, token) {
+  pendingAdminFlow = flow;
+  pendingAdminToken = token;
+  document.getElementById('adminPasswordSetupTitle').textContent = flow === 'invite'
+    ? 'Opret din adgangskode'
+    : 'Vælg en ny adgangskode';
+  document.getElementById('adminPasswordSetupText').textContent = flow === 'invite'
+    ? 'Din invitation er godkendt. Vælg nu den adgangskode, du fremover logger ind med.'
+    : 'Indtast den nye adgangskode, du fremover vil bruge.';
+  document.getElementById('adminPasswordSetupError').style.display = 'none';
+  document.getElementById('adminNewPassword').value = '';
+  document.getElementById('adminConfirmPassword').value = '';
+  document.getElementById('adminModalOverlay').classList.add('open');
+  showAdminPanel('adminPasswordSetupPanel');
+  document.getElementById('adminNewPassword').focus();
+}
+
+function processIdentityLink() {
+  var params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  var inviteToken = params.get('invite_token');
+  var recoveryToken = params.get('recovery_token');
+  if (!inviteToken && !recoveryToken) return;
+
+  history.replaceState(null, document.title, window.location.pathname + window.location.search);
+  openPasswordSetup(inviteToken ? 'invite' : 'recovery', inviteToken || recoveryToken);
+}
+
+async function loginAdmin(event) {
+  event.preventDefault();
+  var error = document.getElementById('adminLoginError');
+  var button = document.getElementById('adminLoginButton');
+  error.style.display = 'none';
+  button.disabled = true;
+  button.textContent = 'Logger ind...';
+
+  try {
+    var response = await fetch('/api/admin/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: document.getElementById('adminEmail').value.trim(),
+        password: document.getElementById('adminPassword').value
+      })
+    });
+    var result = await response.json().catch(function() { return {}; });
+    if (!response.ok) throw new Error(result.error || 'Login mislykkedes.');
+    setAdminState(true);
+    closeAdminModal();
+    document.getElementById('adminPassword').value = '';
+  } catch (loginError) {
+    error.textContent = loginError.message || 'Login mislykkedes.';
+    error.style.display = 'block';
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Log ind';
+  }
+}
+
+async function requestAdminRecovery(event) {
+  event.preventDefault();
+  var error = document.getElementById('adminRecoveryError');
+  var button = document.getElementById('adminRecoveryButton');
+  error.style.display = 'none';
+  button.disabled = true;
+  button.textContent = 'Sender...';
+
+  try {
+    var response = await fetch('/api/admin/recovery', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: document.getElementById('adminRecoveryEmail').value.trim() })
+    });
+    var result = await response.json().catch(function() { return {}; });
+    if (!response.ok) throw new Error(result.error || 'E-mailen kunne ikke sendes.');
+    showAdminMessage('Tjek din indbakke', 'Hvis e-mailen findes i Identity, er der sendt et link til at vælge en ny adgangskode.');
+  } catch (recoveryError) {
+    error.textContent = recoveryError.message || 'E-mailen kunne ikke sendes.';
+    error.style.display = 'block';
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Send nulstillingslink';
+  }
+}
+
+async function completeAdminPassword(event) {
+  event.preventDefault();
+  var password = document.getElementById('adminNewPassword').value;
+  var confirmation = document.getElementById('adminConfirmPassword').value;
+  var error = document.getElementById('adminPasswordSetupError');
+  var button = document.getElementById('adminPasswordSetupButton');
+  error.style.display = 'none';
+
+  if (password.length < 8) {
+    error.textContent = 'Adgangskoden skal være på mindst 8 tegn.';
+    error.style.display = 'block';
+    return;
+  }
+
+  if (password !== confirmation) {
+    error.textContent = 'De to adgangskoder er ikke ens.';
+    error.style.display = 'block';
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = 'Gemmer...';
+
+  try {
+    var endpoint = pendingAdminFlow === 'invite' ? '/api/admin/invite' : '/api/admin/recovery';
+    var response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: pendingAdminToken, password: password })
+    });
+    var result = await response.json().catch(function() { return {}; });
+    if (!response.ok) throw new Error(result.error || 'Adgangskoden kunne ikke gemmes.');
+
+    pendingAdminToken = '';
+    if (result.authenticated) {
+      setAdminState(true);
+      showAdminMessage('Adgangskoden er gemt', 'Du er nu logget ind som administrator og kan slette anmeldelser.');
+    } else {
+      showAdminMessage('Kontoen er klar', 'Adgangskoden er gemt. Tildel nu brugeren rollen admin i Netlify Identity, og log derefter ind her på siden.');
+    }
+  } catch (passwordError) {
+    error.textContent = passwordError.message || 'Adgangskoden kunne ikke gemmes.';
+    error.style.display = 'block';
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Gem adgangskode';
+  }
+}
+
+async function logoutAdmin() {
+  await fetch('/api/admin/session', { method: 'DELETE' });
+  setAdminState(false);
+}
+
+async function deleteReview(reviewId) {
+  if (!confirm('Vil du permanent slette denne anmeldelse?')) return;
+
+  var response = await fetch('/api/reviews/' + reviewId, { method: 'DELETE' });
+  if (response.status === 204) {
+    await fetchPublicReviews();
+    return;
+  }
+
+  var result = await response.json().catch(function() { return {}; });
+  if (response.status === 403) setAdminState(false);
+  alert(result.error || 'Anmeldelsen kunne ikke slettes.');
+}
+
+fetchPublicReviews();
+checkAdminSession();
+window.addEventListener('DOMContentLoaded', processIdentityLink);
 
 
 // ── COOKIE CONSENT ──
@@ -1559,64 +1798,6 @@ function closeCourseModal() {
 }
 
 
-// ── HENT ANMELDELSER FRA NETLIFY ──
-var NETLIFY_SITE_ID = '2488e89d-fed4-4554-8c98-a06d96563d2d';
-var NETLIFY_TOKEN   = 'nfp_6HzBTuiQ4Gwh5QRMtoknKYR54x46TTM69515';
-var NETLIFY_FORM_ID = null;
-
-function fetchNetlifyReviews() {
-  // Først find form ID
-  fetch('https://api.netlify.com/api/v1/sites/' + NETLIFY_SITE_ID + '/forms', {
-    headers: { 'Authorization': 'Bearer ' + NETLIFY_TOKEN }
-  })
-  .then(function(r) { return r.json(); })
-  .then(function(forms) {
-    var form = forms.find(function(f) { return f.name === 'mbcc-anmeldelse'; });
-    if (!form) { showNoReviews(); return; }
-    NETLIFY_FORM_ID = form.id;
-    return fetch('https://api.netlify.com/api/v1/forms/' + form.id + '/submissions', {
-      headers: { 'Authorization': 'Bearer ' + NETLIFY_TOKEN }
-    });
-  })
-  .then(function(r) { return r && r.json(); })
-  .then(function(submissions) {
-    document.getElementById('reviewsLoading').style.display = 'none';
-    if (!submissions || submissions.length === 0) {
-      showNoReviews(); return;
-    }
-    var grid = document.getElementById('netlifyReviewsGrid');
-    grid.style.display = 'grid';
-    grid.innerHTML = submissions.map(function(s) {
-      var d = s.data || {};
-      var stars = parseInt(d.stjerner) || 5;
-      var starStr = '★'.repeat(stars) + '☆'.repeat(5 - stars);
-      var initial = (d.navn || '?').charAt(0).toUpperCase();
-      return '<div class="netlify-review-card">' +
-        '<div class="netlify-review-stars">' + starStr + '</div>' +
-        '<div class="netlify-review-body">' + escHtml(d.anmeldelse || '') + '</div>' +
-        '<div class="netlify-review-meta">' +
-          '<div class="netlify-review-avatar">' + initial + '</div>' +
-          '<div>' +
-            '<div class="netlify-review-name">' + escHtml(d.navn || '') + '</div>' +
-            '<div class="netlify-review-role">' + escHtml(d.rolle || '') + '</div>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
-    }).join('');
-  })
-  .catch(function(err) {
-    console.log('Netlify API ikke tilgængelig:', err);
-    document.getElementById('reviewsLoading').style.display = 'none';
-    showNoReviews();
-  });
-}
-
-function showNoReviews() {
-  document.getElementById('noReviewsMsg').style.display = 'block';
-}
-
-fetchNetlifyReviews();
-
 </script>
 
 <!-- REVIEW MODAL -->
@@ -1638,34 +1819,99 @@ fetchNetlifyReviews();
       </div>
       <div class="review-field">
         <label>Navn</label>
-        <input type="text" id="reviewName" placeholder="Fx Mads K.">
+        <input type="text" id="reviewName" maxlength="80" autocomplete="name" placeholder="Fx Mads K.">
       </div>
       <div class="review-field">
         <label>Rolle / beskrivelse</label>
-        <input type="text" id="reviewRole" placeholder="Fx Producer, Aarhus">
+        <input type="text" id="reviewRole" maxlength="100" placeholder="Fx Producer, Aarhus">
       </div>
       <div class="review-field-upload">
-        <label>Billede <span style="font-weight:400;color:var(--muted);">(valgfrit – profilbillede eller screenshot)</span></label>
+        <label>Billede <span style="font-weight:400;color:var(--muted);">(valgfrit)</span></label>
         <div class="upload-area" onclick="document.getElementById('reviewImageInput').click()">
-          <input type="file" id="reviewImageInput" accept="image/*" onchange="handleImageUpload(event)">
-          <span class="upload-icon">📷</span>
-          <div class="upload-label-text">Klik for at vælge billede · <strong>JPG, PNG eller WEBP</strong></div>
+          <input type="file" id="reviewImageInput" accept="image/jpeg,image/png,image/webp" onchange="handleImageUpload(event)">
+          <span class="upload-label-text"><strong>Vælg et billede</strong><br>JPG, PNG eller WEBP · maks. 3 MB</span>
         </div>
         <div class="upload-preview" id="uploadPreview">
-          <img id="uploadPreviewImg" src="" alt="Preview">
-          <button class="upload-preview-remove" onclick="removeImage()" title="Fjern billede">×</button>
+          <img id="uploadPreviewImg" src="" alt="Forhåndsvisning af valgt billede">
+          <button class="upload-preview-remove" type="button" onclick="event.stopPropagation();removeReviewImage()" aria-label="Fjern billede">×</button>
         </div>
       </div>
       <div class="review-field">
         <label>Din anmeldelse</label>
-        <textarea id="reviewBody" rows="4" placeholder="Hvad har du fået ud af forløbet?"></textarea>
+        <textarea id="reviewBody" rows="4" minlength="10" maxlength="1500" placeholder="Hvad har du fået ud af forløbet?"></textarea>
       </div>
-      <button class="review-submit" onclick="submitReview()">Indsend anmeldelse →</button>
+      <div class="review-honeypot" aria-hidden="true">
+        <label>Hjemmeside <input type="text" id="reviewWebsite" tabindex="-1" autocomplete="off"></label>
+      </div>
+      <p class="review-error" id="reviewError" role="alert"></p>
+      <button class="review-submit" id="reviewSubmit" type="button" onclick="submitReview()">Indsend anmeldelse →</button>
     </div>
     <div class="review-success" id="reviewSuccess">
       <span class="success-icon">🎉</span>
       <h3 style="margin-bottom:8px;">Tak for din anmeldelse!</h3>
       <p>Din oplevelse er nu synlig på siden.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN MODAL -->
+<div class="review-modal-overlay" id="adminModalOverlay" onclick="if(event.target===this)closeAdminModal()">
+  <div class="review-modal">
+    <button class="review-close" type="button" onclick="closeAdminModal()">×</button>
+    <div class="admin-panel" id="adminLoginPanel">
+      <h3>Administratorlogin</h3>
+      <p>Log ind med den bruger, der har rollen <strong>admin</strong> i Netlify Identity.</p>
+      <form onsubmit="loginAdmin(event)">
+        <div class="review-field">
+          <label for="adminEmail">E-mail</label>
+          <input type="email" id="adminEmail" autocomplete="username" required>
+        </div>
+        <div class="review-field">
+          <label for="adminPassword">Adgangskode</label>
+          <input type="password" id="adminPassword" autocomplete="current-password" required>
+        </div>
+        <p class="review-error" id="adminLoginError" role="alert"></p>
+        <button class="review-submit" id="adminLoginButton" type="submit">Log ind</button>
+      </form>
+      <button class="admin-secondary-action" type="button" onclick="openRecoveryRequest()">Glemt adgangskode?</button>
+      <p class="review-admin-note">Kun administratorer kan se og bruge sletteknapperne.</p>
+    </div>
+
+    <div class="admin-panel" id="adminRecoveryPanel" hidden>
+      <h3>Nulstil adgangskode</h3>
+      <p>Indtast din Identity-e-mail, så sender Netlify et nulstillingslink.</p>
+      <form onsubmit="requestAdminRecovery(event)">
+        <div class="review-field">
+          <label for="adminRecoveryEmail">E-mail</label>
+          <input type="email" id="adminRecoveryEmail" autocomplete="email" required>
+        </div>
+        <p class="review-error" id="adminRecoveryError" role="alert"></p>
+        <button class="review-submit" id="adminRecoveryButton" type="submit">Send nulstillingslink</button>
+      </form>
+      <button class="admin-secondary-action" type="button" onclick="showAdminPanel('adminLoginPanel')">Tilbage til login</button>
+    </div>
+
+    <div class="admin-panel" id="adminPasswordSetupPanel" hidden>
+      <h3 id="adminPasswordSetupTitle">Opret din adgangskode</h3>
+      <p id="adminPasswordSetupText"></p>
+      <form onsubmit="completeAdminPassword(event)">
+        <div class="review-field">
+          <label for="adminNewPassword">Ny adgangskode</label>
+          <input type="password" id="adminNewPassword" minlength="8" maxlength="128" autocomplete="new-password" required>
+        </div>
+        <div class="review-field">
+          <label for="adminConfirmPassword">Gentag adgangskode</label>
+          <input type="password" id="adminConfirmPassword" minlength="8" maxlength="128" autocomplete="new-password" required>
+        </div>
+        <p class="review-error" id="adminPasswordSetupError" role="alert"></p>
+        <button class="review-submit" id="adminPasswordSetupButton" type="submit">Gem adgangskode</button>
+      </form>
+    </div>
+
+    <div class="admin-panel" id="adminMessagePanel" hidden>
+      <h3 id="adminMessageTitle"></h3>
+      <p id="adminMessageBody"></p>
+      <button class="review-submit" type="button" onclick="closeAdminModal()">Luk</button>
     </div>
   </div>
 </div>
