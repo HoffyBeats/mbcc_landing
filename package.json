@@ -1,0 +1,20 @@
+{
+  "name": "repo",
+  "version": "1.0.0",
+  "description": "Music Business Coffee Club landing page",
+  "scripts": {
+    "db:generate": "drizzle-kit generate"
+  },
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@netlify/blobs": "^11.0.1",
+    "@netlify/database": "^2.0.0",
+    "@netlify/functions": "^6.0.0",
+    "@netlify/identity": "^2.0.0",
+    "drizzle-orm": "^1.0.0-beta.22"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^1.0.0-beta.22"
+  }
+}
